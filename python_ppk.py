@@ -12,13 +12,13 @@ from pygeodesy.utm import toUtm8
 import mathutils
 import math
 import open3d.open3d as o3d
-import glob
 
 path = './data/'
-projectName = 'JetisPPK6'
+projectName = 'JetisPPK7'
 kmlFilePath = join(path, projectName + '/map/kml/*.kml')
-imuFilePath = join(path, projectName + '/map/pkl/*.pkl')
-timeConverterFilePath = join(path, projectName + '/map/pkl/*.pkl')
+imuFilePath = join(path, projectName + '/map/pkl/imuData.pkl')
+timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
+# timeConverterFilePath = join(path, projectName + '/map/pkl/ppkData.pkl')
 pcdPath = join(path, projectName + '/map/pcd/')
 
 
@@ -26,11 +26,9 @@ pcdPath = join(path, projectName + '/map/pcd/')
 # =============================
 # =============================
 
-timeConverterFile = glob.glob(timeConverterFilePath)[0]
-with open(timeConverterFile, 'rb') as f:
+with open(timeConverterFilePath, 'rb') as f:
     timeData_raw = pickle.load(f, encoding="latin1")
- #device epoch time to python timestamp
-# epochDatetime = timeData_raw.index[0]
+
 ZERO = timedelta(0)
 class UTCtzinfo(tzinfo):
     def utcoffset(self, dt):
@@ -44,18 +42,19 @@ class UTCtzinfo(tzinfo):
 
 utc = UTCtzinfo()
 
-# epochDatetime = (timeData_raw.index[0].tz_localize(utc)).to_pydatetime()
-# utcDatetime = datetime(int(timeData_raw['utc_time__year'][0]),          \
-#                         int(timeData_raw['utc_time__month'][0]),        \
-#                         int(timeData_raw['utc_time__day'][0]),          \
-#                         int(timeData_raw['utc_time__hour'][0]),         \
-#                         int(timeData_raw['utc_time__min'][0]),          \
-#                         int(timeData_raw['utc_time__sec'][0]),          \
-#                         int(timeData_raw['utc_time__nanosec'][0]/1000), \
-#                         tzinfo=utc)                              #UTC time into phyton timestamp                                                          
 print(timeData_raw.index[0])
-# print(epochDatetime)
-# print(utcDatetime)
+epochDatetime = datetime.fromtimestamp(float(timeData_raw.index[0]),utc)
+utcDatetime = datetime(int(timeData_raw['/utc_time/year'][timeData_raw.index[0]]),          \
+                        int(timeData_raw['/utc_time/month'][timeData_raw.index[0]]),        \
+                        int(timeData_raw['/utc_time/day'][timeData_raw.index[0]]),          \
+                        int(timeData_raw['/utc_time/hour'][timeData_raw.index[0]]),         \
+                        int(timeData_raw['/utc_time/min'][timeData_raw.index[0]]),          \
+                        int(timeData_raw['/utc_time/sec'][timeData_raw.index[0]]),          \
+                        int(timeData_raw['/utc_time/nanosec'][timeData_raw.index[0]]/1000), \
+                        tzinfo=utc)                              #UTC time into phyton timestamp                                                          
+
+print(epochDatetime)
+print(utcDatetime)
 
 # print(timeData_raw[['utc_time__hour','utc_time__min']])
 # print("epoch timestamp " + str(datetime.timestamp(epochDatetime)))
@@ -65,22 +64,23 @@ print(timeData_raw.index[0])
 # print("UTC timestamp " + str(utcDatetime))
 
 # calculate delta epoch-utc to offset lidar data to KML clock
-
+utcEpochDelta = datetime.timestamp(utcDatetime) - datetime.timestamp(epochDatetime)
+print (utcEpochDelta)
 
 # # Open IMU pickle file
 # # =============================
 # # =============================
-# with open(imuFile, 'rb') as f:
-#     imuDF_raw = pickle.load(f, encoding="latin1")
+with open(imuFilePath, 'rb') as f:
+    imuDF_raw = pickle.load(f, encoding="latin1")
 
-# imuDF = pd.DataFrame()
-# imuDF['quat_x'] = imuDF_raw['ekf_quat__quaternion_x']
-# imuDF['quat_y'] = imuDF_raw['ekf_quat__quaternion_y']
-# imuDF['quat_z'] = imuDF_raw['ekf_quat__quaternion_z']
-# imuDF['quat_w'] = imuDF_raw['ekf_quat__quaternion_w']
-# imuDF.index = imuDF_raw.index
+# print(imuDF_raw.columns.values)
 
-
+imuDF = pd.DataFrame()
+imuDF['quat_x'] = imuDF_raw['/ppk_quat/quaternion/x']
+imuDF['quat_y'] = imuDF_raw['/ppk_quat/quaternion/y']
+imuDF['quat_z'] = imuDF_raw['/ppk_quat/quaternion/z']
+imuDF['quat_w'] = imuDF_raw['/ppk_quat/quaternion/w']
+imuDF.index = imuDF_raw.index
 
 
 # # Parse KML into dataframe
@@ -113,10 +113,10 @@ print(timeData_raw.index[0])
 # # ==========================
 # # ==========================
 
-# pcdList = sorted(f for f in listdir(pcdPath) \
-#             if (isfile(join(pcdPath,f)) and '.pcd' in f))
-# pcdDf = pd.DataFrame([splitext(each)[0] for each in pcdList],columns=['pcdTimestamp'])
-# # print(pcdDf['pcdTimeStamp'][0])
+pcdList = sorted(f for f in listdir(pcdPath) \
+            if (isfile(join(pcdPath,f)) and '.pcd' in f))
+pcdDf = pd.DataFrame([splitext(each)[0] for each in pcdList],columns=['pcdTimestamp'])
+# print(pcdDf['pcdTimestamp'][0])
 
 
 # IMUCurrentTimestamp = 0
