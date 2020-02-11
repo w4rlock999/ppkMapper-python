@@ -12,9 +12,21 @@ from pygeodesy.utm import toUtm8
 import mathutils
 import math
 import open3d.open3d as o3d
+import argparse
+
+
+def argParser() :
+    parser = argparse.ArgumentParser(description='Process PPK data')
+    parser.add_argument('projectName', metavar="projName",
+                        type=str, help='project name to process')
+    return parser
+
+parser = argParser()
+args = parser.parse_args()
 
 path = './data/'
-projectName = 'JetisPPK7'
+# projectName = 'JetisPPK7'
+projectName = args.projectName
 kmlFilePath = join(path, projectName + '/map/kml/*.kml')
 imuFilePath = join(path, projectName + '/map/pkl/imuData.pkl')
 timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
