@@ -1,4 +1,5 @@
 {
     "python.linting.pylintEnabled": true,
-    "python.linting.enabled": true
+    "python.linting.enabled": true,
+    "python.pythonPath": "C:\\Users\\w4rlo\\AppData\\Local\\Programs\\Python\\Python35\\python.exe"
 }
