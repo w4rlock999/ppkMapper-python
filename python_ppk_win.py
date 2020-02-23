@@ -163,7 +163,7 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
             IMUCurrentTimestamp = IMUCurrentTimestamp + index
             break
 
-    print("found matching IMU data " + str(IMUCurrentTimestamp))
+    # print("found matching IMU data " + str(IMUCurrentTimestamp))
     # print(imuDF['ekf_quat__quaternion_w'][IMUCurrentTimestamp])
     
     # find kml data
@@ -185,7 +185,7 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
                                             (kmlDF.index[KMLPrevIndex].tz_localize(utc)).to_pydatetime()))
             break   
         
-    print("found matching KML data " + str(KMLCurrentIndex))
+    # print("found matching KML data " + str(KMLCurrentIndex))
     
     # interpolate lat,lon,height
     # ===============================
@@ -206,16 +206,25 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
     # =========================
     latlonPos = LatLon(lat, long)
     utmPos = toUtm8(latlonPos,None,None,None)
-    print(utmPos)
+    # print(utmPos)
 
     # TODO take into account of UTM convergence and other calculation
-    quat = mathutils.Quaternion(                \
+    quatTrueNorth = mathutils.Quaternion(                \
         (imuDF['quat_w'][imuDF.index[IMUCurrentTimestamp]],  \
          imuDF['quat_x'][imuDF.index[IMUCurrentTimestamp]],  \
          imuDF['quat_y'][imuDF.index[IMUCurrentTimestamp]],  \
          imuDF['quat_z'][imuDF.index[IMUCurrentTimestamp]]) )
+    # print(quatTrueNorth)
     
-    matRot = (quat.to_matrix()).to_4x4()
+    quatConvergence = mathutils.Quaternion((0.0,0.0,-1.0), math.radians(utmPos[6]))
+    # print(quatConvergence)
+
+    quatGridNorth = quatTrueNorth
+    quatGridNorth.rotate(quatConvergence)
+    # print(quatGridNorth)
+    # print("\n\n")
+
+    matRot = (quatGridNorth.to_matrix()).to_4x4()
     matLoc = mathutils.Matrix.Translation((utmPos[2],utmPos[3],height))
     matSca = mathutils.Matrix.Scale(utmPos[7],4)
 
@@ -228,14 +237,14 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
 
     # print(join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")))
 
-    o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") ), pcdTransformed)
+    # o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") ), pcdTransformed)
 
 
     # o3d.visualization.draw_geometries([pcdCurrent])
     # o3d.visualization.draw_geometries([pcdTransformed])
     
     # break
-    # i = i+1
-    # if i >= 30:
-    #     break
+    i = i+1
+    if i >= 10:
+        break
     
