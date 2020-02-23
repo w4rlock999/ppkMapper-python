@@ -32,7 +32,7 @@ imuFilePath = join(path, projectName + '/map/pkl/imuData.pkl')
 timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
 # timeConverterFilePath = join(path, projectName + '/map/pkl/ppkData.pkl')
 pcdPath = join(path, projectName + '/map/pcd/')
-
+destPath = join(path, projectName + '/map/transformed_pcd/')
 
 # Open UTC converter pickle file
 # =============================
@@ -75,7 +75,7 @@ utcDatetime = datetime(int(timeData_raw['/utc_time/year'][timeData_raw.index[0]]
 # print("epoch timestamp " + str(epochDatetime))
 # print("UTC timestamp " + str(utcDatetime))
 
-# calculate delta epoch-utc to offset lidar data to KML clock
+# calculate delta epoch-utc to offset lidar data to UTC (USED BY KML) clock
 utcEpochDelta = datetime.timestamp(utcDatetime) - datetime.timestamp(epochDatetime)
 print ('delta epoch: ' + str(utcEpochDelta))
 
@@ -134,19 +134,19 @@ pcdDf = pd.DataFrame([splitext(each)[0] for each in pcdList],columns=['pcdTimest
 IMUCurrentTimestamp = 0
 IMUPrevTimestamp = 0 
 
-KMLCurrentTimestamp = 0
-KMLPrevTimestamp = 0
+KMLCurrentIndex = 0
+KMLPrevIndex = 0
 KMLTimeInterp_prev = float(datetime.timestamp((kmlDF.index[0].tz_localize(utc)).to_pydatetime()))
 KMLTimeInterp_now = KMLTimeInterp_prev
 
 # create offset from pcd data to dummy kml
 # ========================================
-kmlTimestampZeroth = (kmlDF.index[0].tz_localize(utc)).to_pydatetime()
-kmlPcdDeltaOffset = float(datetime.timestamp(kmlTimestampZeroth)) - float(datetime.timestamp(datetime.fromtimestamp(float(pcdDf['pcdTimestamp'][0]),utc)))
+# kmlTimestampZeroth = (kmlDF.index[0].tz_localize(utc)).to_pydatetime()
+# kmlPcdDeltaOffset = float(datetime.timestamp(kmlTimestampZeroth)) - float(datetime.timestamp(datetime.fromtimestamp(float(pcdDf['pcdTimestamp'][0]),utc)))
 # utcEpochDelta
 # print(kmlPcdDeltaOffset)
 
-i = 0
+i = 0           # i process limit on debugging
 
 for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
     
@@ -154,6 +154,7 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
     lidarCurrentEpoch = float(datetime.timestamp(lidarCurrentDatetime))
 
     # find imu data
+    # =========================
     for index, imu_t in enumerate(imuDF.index[IMUCurrentTimestamp:]):
         imuTimestamp = datetime.fromtimestamp(float(imu_t),utc)
         deltaImuPcd = float(datetime.timestamp(imuTimestamp)) - lidarCurrentEpoch
@@ -165,36 +166,39 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
     print("found matching IMU data " + str(IMUCurrentTimestamp))
     # print(imuDF['ekf_quat__quaternion_w'][IMUCurrentTimestamp])
     
-    for kmlIndex, kml_t in enumerate(kmlDF.index[KMLCurrentTimestamp:]):
+    # find kml data
+    # =========================
+    for kmlIndex, kml_t in enumerate(kmlDF.index[KMLCurrentIndex:]):
         kmlTimestamp = (kml_t.tz_localize(utc)).to_pydatetime()
         deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - lidarCurrentEpoch)-(utcEpochDelta)
         if deltaKmlPcd >= 0:
             
-            KMLCurrentTimestamp = KMLCurrentTimestamp + kmlIndex
+            KMLCurrentIndex = KMLCurrentIndex + kmlIndex
             KMLTimeInterp_now = float(datetime.timestamp(kmlTimestamp))
             
-            if KMLCurrentTimestamp == 0:
-                KMLPrevTimestamp = KMLCurrentTimestamp
+            if KMLCurrentIndex == 0:
+                KMLPrevIndex = KMLCurrentIndex
                 KMLTimeInterp_prev = KMLTimeInterp_now
             else:
-                KMLPrevTimestamp = KMLCurrentTimestamp - 1
-                KMLTimeInterp_prev = float(datetime.timestamp((kmlDF.index[KMLPrevTimestamp].tz_localize(utc)).to_pydatetime()))
+                KMLPrevIndex = KMLCurrentIndex - 1
+                KMLTimeInterp_prev = float(datetime.timestamp( \
+                                            (kmlDF.index[KMLPrevIndex].tz_localize(utc)).to_pydatetime()))
             break   
         
-    print("found matching KML data " + str(KMLCurrentTimestamp))
+    print("found matching KML data " + str(KMLCurrentIndex))
     
     # interpolate lat,lon,height
     # ===============================
     KMLTimeInterp = [KMLTimeInterp_prev, KMLTimeInterp_now]
-    KMLLatInterp = [float(kmlDF['latitude'][KMLPrevTimestamp]), float(kmlDF['latitude'][KMLCurrentTimestamp])]
-    KMLLongInterp = [float(kmlDF['longitude'][KMLPrevTimestamp]), float(kmlDF['longitude'][KMLCurrentTimestamp])]
-    KMLHeightInterp = [float(kmlDF['height'][KMLPrevTimestamp]), float(kmlDF['height'][KMLCurrentTimestamp])]
+    KMLLatInterp = [float(kmlDF['latitude'][KMLPrevIndex]), float(kmlDF['latitude'][KMLCurrentIndex])]
+    KMLLongInterp = [float(kmlDF['longitude'][KMLPrevIndex]), float(kmlDF['longitude'][KMLCurrentIndex])]
+    KMLHeightInterp = [float(kmlDF['height'][KMLPrevIndex]), float(kmlDF['height'][KMLCurrentIndex])]
 
-    lat = np.interp((lidarCurrentEpoch+kmlPcdDeltaOffset),KMLTimeInterp,KMLLatInterp)
-    long = np.interp((lidarCurrentEpoch+kmlPcdDeltaOffset),KMLTimeInterp,KMLLongInterp)
-    height = np.interp((lidarCurrentEpoch+kmlPcdDeltaOffset),KMLTimeInterp,KMLHeightInterp)
+    lat = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLLatInterp)
+    long = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLLongInterp)
+    height = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLHeightInterp)
     
-    # print("original latitude  " + str(kmlDF['latitude'][KMLCurrentTimestamp]))
+    # print("original latitude  " + str(kmlDF['latitude'][KMLCurrentIndex]))
     # print("interpolated latitude  " + str(lat) )
 
     # Latlon to UTM
@@ -218,14 +222,20 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
     matTransform = matLoc @ matRot @ matSca
     # print(matTransform) 
 
-    # pcdFile = join(path, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") )
-    # pcdCurrent = o3d.io.read_point_cloud(pcdFile)
-    # pcdTransformed = pcdCurrent.transform(matTransform)
+    pcdFile = join(pcdPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") )
+    pcdCurrent = o3d.io.read_point_cloud(pcdFile)
+    pcdTransformed = pcdCurrent.transform(matTransform)
+
+    # print(join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")))
+
+    o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") ), pcdTransformed)
+
+
     # o3d.visualization.draw_geometries([pcdCurrent])
     # o3d.visualization.draw_geometries([pcdTransformed])
     
     # break
-    i = i+1
-    if i >= 10:
-        break
+    # i = i+1
+    # if i >= 30:
+    #     break
     
