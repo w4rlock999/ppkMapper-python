@@ -216,12 +216,14 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
          imuDF['quat_z'][imuDF.index[IMUCurrentTimestamp]]) )
     # print(quatTrueNorth)
     
-    quatConvergence = mathutils.Quaternion((0.0,0.0,-1.0), math.radians(utmPos[6]))
+    quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
     # print(quatConvergence)
 
-    quatGridNorth = quatTrueNorth
-    quatGridNorth.rotate(quatConvergence)
+    quatGridNorth = quatTrueNorth @ quatConvergence
+    # quatGridNorth2 = quatTrueNorth.copy()
+    # quatGridNorth2.rotate(quatConvergence)
     # print(quatGridNorth)
+    # print(quatGridNorth2)
     # print("\n\n")
 
     matRot = (quatGridNorth.to_matrix()).to_4x4()
@@ -245,6 +247,6 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
     
     # break
     i = i+1
-    if i >= 10:
+    if i >= 1:
         break
     
