@@ -1,5 +1,4 @@
-from os import listdir
-from os import path
+from os import listdir, path, mkdir
 from os.path import isfile, join, splitext
 from pykml import parser as kmlParser
 import pandas as pd
@@ -13,7 +12,7 @@ import mathutils
 import math
 import open3d.open3d as o3d
 import argparse
-
+from tqdm import tqdm
 
 def argParser() :
     parser = argparse.ArgumentParser(description='Process PPK data')
@@ -33,6 +32,13 @@ timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
 # timeConverterFilePath = join(path, projectName + '/map/pkl/ppkData.pkl')
 pcdPath = join(path, projectName + '/map/pcd/')
 destPath = join(path, projectName + '/map/transformed_pcd/')
+
+try:
+    mkdir(destPath)
+except OSError:
+    print("creation of folder %s failed" % destPath)
+else:
+    print("successfully creating folder %s" % destPath)
 
 # Open UTC converter pickle file
 # =============================
@@ -77,7 +83,7 @@ utcDatetime = datetime(int(timeData_raw['/utc_time/year'][timeData_raw.index[0]]
 
 # calculate delta epoch-utc to offset lidar data to UTC (USED BY KML) clock
 utcEpochDelta = datetime.timestamp(utcDatetime) - datetime.timestamp(epochDatetime)
-print ('delta epoch: ' + str(utcEpochDelta))
+# print ('delta epoch: ' + str(utcEpochDelta))
 
 # # Open IMU pickle file
 # # =============================
@@ -147,9 +153,12 @@ KMLTimeInterp_now = KMLTimeInterp_prev
 # print(kmlPcdDeltaOffset)
 
 i = 0           # i process limit on debugging
+print("\n")
 
-for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
+
+for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.index), ascii=True):
     
+
     lidarCurrentDatetime = datetime.fromtimestamp(float(lidarCurrentTimestamp),utc)
     lidarCurrentEpoch = float(datetime.timestamp(lidarCurrentDatetime))
 
@@ -239,14 +248,15 @@ for lidarIndex, lidarCurrentTimestamp in pcdDf.iterrows():
 
     # print(join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")))
 
-    # o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") ), pcdTransformed)
+    o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") ), pcdTransformed)
 
 
     # o3d.visualization.draw_geometries([pcdCurrent])
     # o3d.visualization.draw_geometries([pcdTransformed])
     
     # break
-    i = i+1
-    if i >= 1:
-        break
+    # i = i+1
+    # if i >= 1:
+    #     break
     
+
