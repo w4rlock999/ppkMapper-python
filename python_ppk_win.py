@@ -137,8 +137,8 @@ pcdDf = pd.DataFrame([splitext(each)[0] for each in pcdList],columns=['pcdTimest
 # print(pcdDf['pcdTimestamp'][0])
 
 
-IMUCurrentTimestamp = 0
-IMUPrevTimestamp = 0 
+IMUCurrentIndex = 0
+IMUPrevIndex = 0 
 
 KMLCurrentIndex = 0
 KMLPrevIndex = 0
@@ -164,16 +164,16 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
 
     # find imu data
     # =========================
-    for index, imu_t in enumerate(imuDF.index[IMUCurrentTimestamp:]):
+    for index, imu_t in enumerate(imuDF.index[IMUCurrentIndex:]):
         imuTimestamp = datetime.fromtimestamp(float(imu_t),utc)
         deltaImuPcd = float(datetime.timestamp(imuTimestamp)) - lidarCurrentEpoch
         if deltaImuPcd >= 0:
-            IMUPrevTimestamp = IMUCurrentTimestamp
-            IMUCurrentTimestamp = IMUCurrentTimestamp + index
+            IMUPrevIndex = IMUCurrentIndex
+            IMUCurrentIndex = IMUCurrentIndex + index
             break
 
-    # print("found matching IMU data " + str(IMUCurrentTimestamp))
-    # print(imuDF['ekf_quat__quaternion_w'][IMUCurrentTimestamp])
+    # print("found matching IMU data " + str(IMUCurrentIndex))
+    # print(imuDF['ekf_quat__quaternion_w'][IMUCurrentIndex])
     
     # find kml data
     # =========================
@@ -206,7 +206,10 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
     lat = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLLatInterp)
     long = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLLongInterp)
     height = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLHeightInterp)
-    
+
+    # print(KMLTimeInterp)
+    # print(lidarCurrentEpoch+utcEpochDelta)
+
     # print("original latitude  " + str(kmlDF['latitude'][KMLCurrentIndex]))
     # print("interpolated latitude  " + str(lat) )
 
@@ -219,16 +222,16 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
 
     # TODO take into account of UTM convergence and other calculation
     quatTrueNorth = mathutils.Quaternion(                \
-        (imuDF['quat_w'][imuDF.index[IMUCurrentTimestamp]],  \
-         imuDF['quat_x'][imuDF.index[IMUCurrentTimestamp]],  \
-         imuDF['quat_y'][imuDF.index[IMUCurrentTimestamp]],  \
-         imuDF['quat_z'][imuDF.index[IMUCurrentTimestamp]]) )
+        (imuDF['quat_w'][imuDF.index[IMUCurrentIndex]],  \
+         imuDF['quat_x'][imuDF.index[IMUCurrentIndex]],  \
+         imuDF['quat_y'][imuDF.index[IMUCurrentIndex]],  \
+         imuDF['quat_z'][imuDF.index[IMUCurrentIndex]]) )
     # print(quatTrueNorth)
     
     quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
     # print(quatConvergence)
 
-    quatGridNorth = quatTrueNorth @ quatConvergence
+    quatGridNorth = quatConvergence @ quatTrueNorth 
     # quatGridNorth2 = quatTrueNorth.copy()
     # quatGridNorth2.rotate(quatConvergence)
     # print(quatGridNorth)
@@ -248,7 +251,11 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
 
     # print(join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")))
 
-    o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") ), pcdTransformed)
+    pcdWriteName = str(datetime.fromtimestamp(lidarCurrentEpoch+utcEpochDelta))
+    pcdWriteName = pcdWriteName.replace(" ","__")
+    pcdWriteName = pcdWriteName.replace(":","-")
+    # print(pcdWriteName)
+    o3d.io.write_point_cloud( join(destPath, str( pcdWriteName +".pcd") ), pcdTransformed)
 
 
     # o3d.visualization.draw_geometries([pcdCurrent])
@@ -256,7 +263,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
     
     # break
     # i = i+1
-    # if i >= 1:
+    # if i >= 30:
     #     break
     
 
