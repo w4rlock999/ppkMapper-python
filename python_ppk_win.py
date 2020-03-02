@@ -32,6 +32,7 @@ timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
 # timeConverterFilePath = join(path, projectName + '/map/pkl/ppkData.pkl')
 pcdPath = join(path, projectName + '/map/pcd/')
 destPath = join(path, projectName + '/map/transformed_pcd/')
+offsetPath = join(path, projectName + '/map/')
 
 try:
     mkdir(destPath)
@@ -155,6 +156,8 @@ KMLTimeInterp_now = KMLTimeInterp_prev
 i = 0           # i process limit on debugging
 print("\n")
 
+utmOffsetX = 0
+utmOffsetY = 0
 
 for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.index), ascii=True):
     
@@ -229,19 +232,30 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
     # print(quatTrueNorth)
     
     quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
-    # print(quatConvergence)
-
     quatGridNorth = quatConvergence @ quatTrueNorth 
-    # quatGridNorth2 = quatTrueNorth.copy()
-    # quatGridNorth2.rotate(quatConvergence)
-    # print(quatGridNorth)
-    # print(quatGridNorth2)
-    # print("\n\n")
-
     matRot = (quatGridNorth.to_matrix()).to_4x4()
-    matLoc = mathutils.Matrix.Translation((utmPos[2],utmPos[3],height))
+    
+    # HEADING ADJUSTMENT:
+    quatAdjustment = mathutils.Quaternion((0.0,0.0,1.0), math.radians(4))
+    quatAdjustedNorth = quatAdjustment @ quatGridNorth
+
+    # matRot = (quatAdjustedNorth.to_matrix()).to_4x4()
+
+    if utmOffsetX == 0 :
+        utmOffsetX = utmPos[2]
+        utmOffsetY = utmPos[3]
+        offsetFile = open(join(offsetPath, str( "UTM_offset.txt" )), "w+")
+        LINE = ["easting: " + str(utmOffsetX) + "\n", "northing: " + str(utmOffsetY)]
+        offsetFile.writelines(LINE)
+    
+    matLoc = mathutils.Matrix.Translation(( (utmPos[2] - utmOffsetX), (utmPos[3] - utmOffsetY) , height))
     matSca = mathutils.Matrix.Scale(utmPos[7],4)
 
+    # dummy transform mat components to test compression existence
+    # matRot = ((mathutils.Quaternion((1,0,0,0))).to_matrix()).to_4x4()
+    # matLoc = mathutils.Matrix.Translation((0,0,0))
+    # matSca = mathutils.Matrix.Scale(1,4) 
+    
     matTransform = matLoc @ matRot @ matSca
     # print(matTransform) 
 
@@ -255,7 +269,8 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
     pcdWriteName = pcdWriteName.replace(" ","__")
     pcdWriteName = pcdWriteName.replace(":","-")
     # print(pcdWriteName)
-    o3d.io.write_point_cloud( join(destPath, str( pcdWriteName +".pcd") ), pcdTransformed)
+    # o3d.io.write_point_cloud( join(destPath, str( pcdWriteName +".pcd") ), pcdTransformed) #write with readable UTC clock
+    o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")), pcdTransformed) #write with EPOCH clock
 
 
     # o3d.visualization.draw_geometries([pcdCurrent])
@@ -263,7 +278,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iterrows(), total=len(pcdDf.
     
     # break
     # i = i+1
-    # if i >= 30:
+    # if i >= 4:
     #     break
     
 
