@@ -1,6 +1,6 @@
 {
-    "python.linting.pylintEnabled": true,
+    "python.linting.pylintEnabled": false,
     "python.linting.enabled": true,
-    "python.pythonPath": "C:\\Users\\w4rlo\\AppData\\Local\\Programs\\Python\\Python35-32\\python.exe",
-    "python.linting.pylamaEnabled": false
+    "python.linting.pylamaEnabled": false,
+    "python.linting.prospectorEnabled": true
 }

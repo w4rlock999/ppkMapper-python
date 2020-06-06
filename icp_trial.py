@@ -64,3 +64,20 @@ o3d.visualization.draw_geometries([source_temp, target_temp])
 
 # o3d.visualization.draw_geometries([sourceCloud])
 # o3d.visualization.draw_geometries([targetCloud])
+
+    for kmlIndex, kml_t in enumerate(kmlDF.index[KMLCurrentIndex:]):
+        kmlTimestamp = (kml_t.tz_localize(utc)).to_pydatetime()
+        deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - lidarCurrentEpoch)-(utcEpochDelta)
+        if deltaKmlPcd >= 0:
+            
+            KMLCurrentIndex = KMLCurrentIndex + kmlIndex
+            KMLTimeInterp_now = float(datetime.timestamp(kmlTimestamp))
+            
+            if KMLCurrentIndex == 0:
+                KMLPrevIndex = KMLCurrentIndex
+                KMLTimeInterp_prev = KMLTimeInterp_now
+            else:
+                KMLPrevIndex = KMLCurrentIndex - 1
+                KMLTimeInterp_prev = float(datetime.timestamp( \
+                                            (kmlDF.index[KMLPrevIndex].tz_localize(utc)).to_pydatetime()))
+            break 
