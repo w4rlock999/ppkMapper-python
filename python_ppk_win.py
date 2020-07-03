@@ -336,7 +336,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
         matTransform = matLoc @ matRot @ matSca
         # Map
         pcdCroppedTransformed = pcdCropped.transform(matTransform)
-        pcdTransformed = pcdTransformed + pcdCropped
+        pcdTransformed = pcdTransformed + pcdCroppedTransformed
         
         cloudIterator += 1
         # print("iter "+str(cloudIterator))
