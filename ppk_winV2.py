@@ -12,27 +12,41 @@ import mathutils
 import math
 import open3d.open3d_pybind as o3d
 import argparse
+import json
 from tqdm import tqdm
 
 def argParser() :
     parser = argparse.ArgumentParser(description='Process PPK data')
-    parser.add_argument('projectName', metavar="projName",
-                        type=str, help='project name to process')
+    # parser.add_argument('projectName', metavar="projName",
+    #                     type=str, help='project name to process')
+    parser.add_argument('pathToProject', metavar="pathToProject",
+                        type=str, help='path to project directory')
+    parser.add_argument('pathToTrajectory', metavar="pathToTrajectorty",
+                        type=str, help='path to GPS trajectory file folder')
     return parser
 
 parser = argParser()
 args = parser.parse_args()
 
-path = './data/'
-# projectName = 'JetisPPK7'
-projectName = args.projectName
-kmlFilePath = join(path, projectName + '/map/kml/kmlData.kml')
-imuFilePath = join(path, projectName + '/map/pkl/imuData.pkl')
-timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
-# timeConverterFilePath = join(path, projectName + '/map/pkl/ppkData.pkl')
-pcdPath = join(path, projectName + '/map/pcd/')
-destPath = join(path, projectName + '/map/transformed_pcd/')
-offsetPath = join(path, projectName + '/map/')
+# path = './data/'
+# projectName = args.projectName
+# kmlFilePath = join(path, projectName + '/map/kml/kmlData.kml')
+# imuFilePath = join(path, projectName + '/map/pkl/imuData.pkl')
+# timeConverterFilePath = join(path, projectName + '/map/pkl/utcData.pkl')
+# pcdPath = join(path, projectName + '/map/pcd/')
+# destPath = join(path, projectName + '/map/transformed_pcd/')
+# offsetPath = join(path, projectName + '/map/')
+
+pathToProject           = args.pathToProject
+imuFilePath             = pathToProject + '/map/pkl/imuData.pkl'
+timeConverterFilePath   = pathToProject + '/map/pkl/utcData.pkl'
+pcdPath                 = pathToProject + '/map/pcd/' 
+destPath                = pathToProject + '/map/transformed_pcd/'
+offsetPath              = pathToProject + '/map/'
+
+pathToTrajectory        = args.pathToTrajectory
+kmlFilePath             = pathToTrajectory + '/kmlData.kml'  
+
 
 try:
     mkdir(destPath)
@@ -40,6 +54,9 @@ except OSError:
     print("creation of folder %s failed" % destPath)
 else:
     print("successfully creating folder %s" % destPath)
+
+with open('./config.json') as f:
+    config = json.load(f)
 
 # Open UTC converter pickle file
 # =============================
@@ -272,7 +289,16 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
             # =========================
             quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
             quatGridNorth = quatConvergence @ quatInterpolatedTrueNorth 
-            matRot = (quatGridNorth.to_matrix()).to_4x4()
+
+            # add config boresight angle adjustment
+            # ======================================
+            eulerAdjustment = mathutils.Euler(config["boresightAdjustment"]["Roll"] * degToRad, \
+                                             config["boresightAdjustment"]["Pitch"] * degToRad, \
+                                             config["boresightAdjustment"]["Yaw"] * degToRad, \
+                                             'XYZ' )
+            quatAdjustment = eulerAdjustment.to_quaternion()    
+            quatFinal = quatAdjustment @ quatGridNorth                                         
+            matRot = (quatFinal.to_matrix()).to_4x4()
             
             if utmOffsetX == 0 :
                 utmOffsetX = utmPos[2]
