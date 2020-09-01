@@ -292,12 +292,20 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
 
             # add config boresight angle adjustment
             # ======================================
-            eulerAdjustment = mathutils.Euler(config["boresightAdjustment"]["Roll"] * degToRad, \
-                                             config["boresightAdjustment"]["Pitch"] * degToRad, \
-                                             config["boresightAdjustment"]["Yaw"] * degToRad, \
-                                             'XYZ' )
+            # eulerAdjustmentRoll = mathutils.Euler((config["boresightAdjustment"]["Roll"] * degToRad,0,0))
+            # eulerAdjustmentPitch = mathutils.Euler((0,config["boresightAdjustment"]["Pitch"] * degToRad,0))
+            # eulerAdjustmentYaw = mathutils.Euler((0,0,config["boresightAdjustment"]["Yaw"] * degToRad))
+            eulerAdjustment = mathutils.Euler(( config["boresightAdjustment"]["Roll"]   * degToRad, \
+                                                config["boresightAdjustment"]["Pitch"]  * degToRad, \
+                                                config["boresightAdjustment"]["Yaw"]    * degToRad))
+                                             
+            # quatAdjustmentRoll = eulerAdjustmentRoll.to_quaternion()    
+            # quatAdjustmentPitch = eulerAdjustmentPitch.to_quaternion()    
+            # quatAdjustmentYaw = eulerAdjustmentYaw.to_quaternion()    
             quatAdjustment = eulerAdjustment.to_quaternion()    
-            quatFinal = quatAdjustment @ quatGridNorth                                         
+
+            # quatFinal = quatAdjustmentRoll @ quatAdjustmentPitch @ quatAdjustmentYaw @  quatGridNorth                                         
+            quatFinal = quatAdjustment @  quatGridNorth                                         
             matRot = (quatFinal.to_matrix()).to_4x4()
             
             if utmOffsetX == 0 :
