@@ -10,10 +10,11 @@ from pygeodesy.ellipsoidalKarney import LatLon
 from pygeodesy.utm import toUtm8
 import mathutils
 import math
-import open3d.open3d_pybind as o3d
+import open3d.open3d as o3d
 import argparse
 import json
 from tqdm import tqdm
+import sys
 
 def argParser() :
     parser = argparse.ArgumentParser(description='Process PPK data')
@@ -47,6 +48,7 @@ offsetPath              = pathToProject + '/map/'
 pathToTrajectory        = args.pathToTrajectory
 kmlFilePath             = pathToTrajectory + '/kmlData.kml'  
 
+filePath                = path.dirname(path.abspath(__file__)) 
 
 try:
     mkdir(destPath)
@@ -55,7 +57,7 @@ except OSError:
 else:
     print("successfully creating folder %s" % destPath)
 
-with open('./config.json') as f:
+with open( filePath + '/config.json') as f:
     config = json.load(f)
 
 # Open UTC converter pickle file
@@ -181,8 +183,34 @@ degToRad = 0.0174533
 cloudCounter = 0
 pcdFinal = o3d.geometry.PointCloud()
 
+def leverArmCalc():
+    leverArmArray = np.array([[-0.056872,-0.0000018,0.265729]])
+    eulerLeverArm = mathutils.Euler(( 90*degToRad, 44.99999*degToRad, 90*degToRad))
+
+    leverArmCoord = o3d.geometry.PointCloud()
+    quatLeverArm = mathutils.Quaternion()
+
+    quatLeverArm = eulerLeverArm.to_quaternion()
+    quatLeverArm.invert()
+    matRotLeverArm = (quatLeverArm.to_matrix()).to_4x4() 
+
+    leverArmCoord.points = o3d.utility.Vector3dVector(leverArmArray)
+    leverArmFromLidar = leverArmCoord.transform(matRotLeverArm)
+
+    return(leverArmFromLidar)
+
+processStart = False
+
 for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total=len(pcdDf.index[350:]), ascii=True):
     
+    sys.stderr.flush()
+
+    if (processStart != True) :
+        
+        processStart = True
+        print("process_start", file = sys.stdout) 
+        sys.stdout.flush()
+
     # Find lidar current epoch
     # ===============================
     lidarCurrentDatetime = datetime.fromtimestamp(float(lidarCurrentTimestamp),utc)
@@ -303,9 +331,10 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
             # quatAdjustmentPitch = eulerAdjustmentPitch.to_quaternion()    
             # quatAdjustmentYaw = eulerAdjustmentYaw.to_quaternion()    
             quatAdjustment = eulerAdjustment.to_quaternion()    
-
+            
             # quatFinal = quatAdjustmentRoll @ quatAdjustmentPitch @ quatAdjustmentYaw @  quatGridNorth                                         
-            quatFinal = quatAdjustment @  quatGridNorth                                         
+            # quatFinal = quatAdjustment @  quatGridNorth                                         
+            quatFinal = quatGridNorth                                         
             matRot = (quatFinal.to_matrix()).to_4x4()
             
             if utmOffsetX == 0 :
@@ -314,8 +343,19 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
                 offsetFile = open(join(offsetPath, str( "UTM_offset.txt" )), "w+")
                 LINE = ["easting: " + str(utmOffsetX) + "\n", "northing: " + str(utmOffsetY)]
                 offsetFile.writelines(LINE)
+
+            # calculate lever arm offset
+            leverArm = leverArmCalc()
+            leverArmOffsetPoint = leverArm.transform(matRot)
             
-            matLoc = mathutils.Matrix.Translation(( (utmPos[2] - utmOffsetX), (utmPos[3] - utmOffsetY) , height))
+            leverArmOffsetX     = -(np.asarray(leverArmOffsetPoint.points)[0,0])
+            leverArmOffsetY     = -(np.asarray(leverArmOffsetPoint.points)[0,1])
+            leverArmOffsetZ     = -(np.asarray(leverArmOffsetPoint.points)[0,2])
+            
+
+            matLoc = mathutils.Matrix.Translation(( (utmPos[2] - utmOffsetX + leverArmOffsetX), \
+                                                    (utmPos[3] - utmOffsetY + leverArmOffsetY), \
+                                                    height + leverArmOffsetZ) )
             matSca = mathutils.Matrix.Scale(utmPos[7],4)
             
             matTransform = matLoc @ matRot @ matSca

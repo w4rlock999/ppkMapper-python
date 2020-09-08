@@ -1,8 +1,8 @@
 {
     "boresightAdjustment" : {
-        "Roll"  : 35.26439,
-        "Pitch" : 45,
-        "Yaw"   : -54.7356
+        "Roll"  : 0.0,
+        "Pitch" : 0.0,
+        "Yaw"   : 0.0
     },
     "leverarmAdjustment" : {
         "x"     : 0.0,
