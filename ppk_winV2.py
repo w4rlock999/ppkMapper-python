@@ -4,16 +4,15 @@ from pykml import parser as kmlParser
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, tzinfo 
-import time
 import pickle
 from pygeodesy.ellipsoidalKarney import LatLon 
 from pygeodesy.utm import toUtm8
 import mathutils
-import math
+from math import sin, cos, radians
 import open3d.open3d as o3d
+from tqdm import tqdm
 import argparse
 import json
-from tqdm import tqdm
 import sys
 
 def argParser() :
@@ -103,6 +102,8 @@ utcDatetime = datetime(int(timeData_raw['/utc_time/year'][timeData_raw.index[0]]
 
 # calculate delta epoch-utc to offset lidar data to UTC (USED BY KML) clock
 utcEpochDelta = datetime.timestamp(utcDatetime) - datetime.timestamp(epochDatetime)
+print("utc epoch delta")
+print(utcEpochDelta)
 # print ('delta epoch: ' + str(utcEpochDelta))
 
 # # Open IMU pickle file
@@ -175,8 +176,8 @@ KMLTimeInterp_now = KMLTimeInterp_prev
 i = 0           # i process limit on debugging
 print("\n")
 
-utmOffsetX = 0
-utmOffsetY = 0
+utmOffsetX = 0.0
+utmOffsetY = 0.0
 
 degToRad = 0.0174533
 
@@ -216,15 +217,15 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
     lidarCurrentDatetime = datetime.fromtimestamp(float(lidarCurrentTimestamp),utc)
     lidarCurrentEpoch = float(datetime.timestamp(lidarCurrentDatetime))
 
-    pointA = [110*math.cos(0*degToRad),110*math.sin(0*degToRad),0.0]
-    pointB = [110*math.cos(0*degToRad),110*math.sin(0*degToRad),0.0]
+    pointA = [110*cos(0*degToRad),110*sin(0*degToRad),0.0]
+    pointB = [110*cos(0*degToRad),110*sin(0*degToRad),0.0]
     pcdTransformed = o3d.geometry.PointCloud()
 
     pcdFile = join(pcdPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") )    
     pcdCurrent = o3d.io.read_point_cloud(pcdFile)
     
     motionCompeIter = 0
-    
+    # print("hello")
     while motionCompeIter < 180 :
 
         if motionCompeIter<= 50 or motionCompeIter>=130 :       
@@ -234,8 +235,8 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
 
             pointA = pointB
             pointB =    [  
-                            110*math.cos(-(2*(motionCompeIter+1))*degToRad),
-                            110*math.sin(-(2*(motionCompeIter+1))*degToRad),
+                            110*cos(-(2*(motionCompeIter+1))*degToRad),
+                            110*sin(-(2*(motionCompeIter+1))*degToRad),
                             0.0
                         ]
 
@@ -265,7 +266,8 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
             # =========================
             for kmlIndex, kml_t in enumerate(kmlDF.index[KMLCurrentIndex:]):
                 kmlTimestamp = (kml_t.tz_localize(utc)).to_pydatetime()
-                deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - cropTimeEpoch)-(utcEpochDelta)
+                deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - 2 - cropTimeEpoch)-(utcEpochDelta)
+                # deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - cropTimeEpoch)
                 if deltaKmlPcd >= 0:
                     
                     KMLCurrentIndex = KMLCurrentIndex + kmlIndex
@@ -315,7 +317,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
             
             # true north to grid north
             # =========================
-            quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
+            quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), radians(utmPos[6]))
             quatGridNorth = quatConvergence @ quatInterpolatedTrueNorth 
 
             # add config boresight angle adjustment
@@ -337,12 +339,15 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
             quatFinal = quatGridNorth                                         
             matRot = (quatFinal.to_matrix()).to_4x4()
             
-            if utmOffsetX == 0 :
+            if utmOffsetX == 0.0 :
                 utmOffsetX = utmPos[2]
                 utmOffsetY = utmPos[3]
-                offsetFile = open(join(offsetPath, str( "UTM_offset.txt" )), "w+")
+                # print("utm X offset " + str(utmOffsetX))
+                # print("utm X offset " + str(utmOffsetY))
+                offsetFile = open(join(offsetPath, str( "UTM_offset.txt" )), "w")
                 LINE = ["easting: " + str(utmOffsetX) + "\n", "northing: " + str(utmOffsetY)]
                 offsetFile.writelines(LINE)
+                offsetFile.close()
 
             # calculate lever arm offset
             leverArm = leverArmCalc()
@@ -367,20 +372,26 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[350:].iterrows(), total
         
         motionCompeIter += 1
 
-    if cloudCounter <= 3 :
-        pcdFinal = pcdFinal + pcdTransformed
-        cloudCounter += 1
-    else :
-        pcdWriteName = str(datetime.fromtimestamp(lidarCurrentEpoch+utcEpochDelta))
-        pcdWriteName = pcdWriteName.replace(" ","__")
-        pcdWriteName = pcdWriteName.replace(":","-")
-        # print(pcdWriteName)
-        # o3d.io.write_point_cloud( join(destPath, str( pcdWriteName +".pcd") ), pcdTransformed) #write with readable UTC clock
-        o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")), pcdFinal) #write with EPOCH clock
-    
-        pcdFinal = o3d.geometry.PointCloud()
-        cloudCounter = 0
+    # if cloudCounter <= 3 :
+    #     pcdFinal = pcdFinal + pcdTransformed
+    #     cloudCounter += 1
+    # else :
+    # pcdFinal = pcdFinal + pcdTransformed
+    pcdFinal = pcdTransformed
+    pcdWriteName = str(datetime.fromtimestamp(lidarCurrentEpoch+utcEpochDelta))
+    pcdWriteName = pcdWriteName.replace(" ","__")
+    pcdWriteName = pcdWriteName.replace(":","-")
+    # print(pcdWriteName)
+    # o3d.io.write_point_cloud( join(destPath, str( pcdWriteName +".pcd") ), pcdTransformed) #write with readable UTC clock
+    o3d.io.write_point_cloud( join(destPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd")), pcdFinal) #write with EPOCH clock
 
+    pcdFinal = o3d.geometry.PointCloud()
+    cloudCounter = 0
+
+
+print("process_finished", file = sys.stdout) 
+sys.stdout.flush()
+sys.exit(True)
     # else :
 
     # o3d.visualization.draw_geometries([pcdCurrent])
