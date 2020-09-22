@@ -216,168 +216,143 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:].iterrows(), tota
     lidarCurrentDatetime = datetime.fromtimestamp(float(lidarCurrentTimestamp),utc)
     lidarCurrentEpoch = float(datetime.timestamp(lidarCurrentDatetime))
 
-    pointA = [110*math.cos(0*degToRad),110*math.sin(0*degToRad),0.0]
-    pointB = [110*math.cos(0*degToRad),110*math.sin(0*degToRad),0.0]
+    
     pcdTransformed = o3d.geometry.PointCloud()
 
     pcdFile = join(pcdPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") )    
     pcdCurrent = o3d.io.read_point_cloud(pcdFile)
     
-    lidarCurrentEpoch = lidarCurrentEpoch + 0.17         # compensate lidar time as end time instead of start time
+    lidarCurrentEpoch = lidarCurrentEpoch + 0.1
+  
+
+    # ====================================================
+    #     Crop pointcloud, calculate crop time
+    # ====================================================
     
-    motionCompeIter = 0
+    # find imu data
+    # =========================
+    for index, imu_t in enumerate(imuDF.index[IMUCurrentIndex:]):
+        deltaImuPcd = float(imu_t) - lidarCurrentEpoch
+        # print(deltaImuPcd)
+        if deltaImuPcd >= 0:
+            IMUCurrentIndex = IMUCurrentIndex + index
+            IMUTimeInterp_current = float(imuDF.index[IMUCurrentIndex])
+
+            IMUPrevIndex = IMUCurrentIndex - 1
+            IMUTimeInterp_prev = float(imuDF.index[IMUPrevIndex])
+            break
+
+    # find kml data
+    # =========================
+    for kmlIndex, kml_t in enumerate(kmlDF.index[KMLCurrentIndex:]):
+        kmlTimestamp = (kml_t.tz_localize(utc)).to_pydatetime()
+        deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - (lidarCurrentEpoch + utcEpochDelta))
+        if deltaKmlPcd >= 0:
+            
+            KMLCurrentIndex = KMLCurrentIndex + kmlIndex
+            KMLTimeInterp_now = float(datetime.timestamp(kmlTimestamp))
+
+            KMLPrevIndex = KMLCurrentIndex - 1
+            KMLTimeInterp_prev = float(datetime.timestamp( \
+                                            (kmlDF.index[KMLPrevIndex].tz_localize(utc)).to_pydatetime()))
+            break   
     
-    while motionCompeIter < 180 :
+    # interpolate IMU data
+    # =========================
+    quatTrueNorthCurrent = mathutils.Quaternion(                \
+        (imuDF['quat_w'][imuDF.index[IMUCurrentIndex]],     \
+        imuDF['quat_x'][imuDF.index[IMUCurrentIndex]],      \
+        imuDF['quat_y'][imuDF.index[IMUCurrentIndex]],      \
+        imuDF['quat_z'][imuDF.index[IMUCurrentIndex]]) )
 
-        # if motionCompeIter<= 58 or motionCompeIter>=167 :       
-        if motionCompeIter<= 58 or motionCompeIter>=130 :       
-            # ====================================================
-            #     Crop pointcloud, calculate crop time
-            # ====================================================
+    quatTrueNorthPrev = mathutils.Quaternion(                \
+        (imuDF['quat_w'][imuDF.index[IMUPrevIndex]],     \
+        imuDF['quat_x'][imuDF.index[IMUPrevIndex]],      \
+        imuDF['quat_y'][imuDF.index[IMUPrevIndex]],      \
+        imuDF['quat_z'][imuDF.index[IMUPrevIndex]]) )
 
-            pointA = pointB
-            pointB =    [  
-                            110*math.cos(-(2*(motionCompeIter+1))*degToRad),
-                            110*math.sin(-(2*(motionCompeIter+1))*degToRad),
-                            0.0
-                        ]
+    cropIMUFactor = 0.0
+    if (IMUTimeInterp_current - IMUTimeInterp_prev != 0) :
+        cropIMUFactor = (lidarCurrentEpoch - IMUTimeInterp_prev)/ \
+                        (IMUTimeInterp_current - IMUTimeInterp_prev)
+    
+    quatInterpolatedTrueNorth = quatTrueNorthPrev.slerp(quatTrueNorthCurrent, cropIMUFactor)
 
-            cropper = o3d.visualization.SelectionPolygonVolume()
-            cropper.axis_max = 25.0
-            cropper.axis_min = -25.0
-            cropper.orthogonal_axis = "Z"
-            cropper.bounding_polygon =  o3d.utility.Vector3dVector([[0.0,0.0,0.0],pointA,pointB])
+    # interpolate lat,lon,height
+    # ===============================
+    KMLTimeInterp = [KMLTimeInterp_prev, KMLTimeInterp_now]
+    KMLLatInterp = [float(kmlDF['latitude'][KMLPrevIndex]), float(kmlDF['latitude'][KMLCurrentIndex])]
+    KMLLongInterp = [float(kmlDF['longitude'][KMLPrevIndex]), float(kmlDF['longitude'][KMLCurrentIndex])]
+    KMLHeightInterp = [float(kmlDF['height'][KMLPrevIndex]), float(kmlDF['height'][KMLCurrentIndex])]
 
-            cropTimeSeconds = float(motionCompeIter) * (2/360)*0.1 #for use in 10HZ lidar rotation, need to change if lidar rotation changed
-            cropTimeEpoch = (lidarCurrentEpoch - 0.1) + float(cropTimeSeconds)
-            
-            # find imu data
-            # =========================
-            for index, imu_t in enumerate(imuDF.index[IMUCurrentIndex:]):
-                deltaImuPcd = float(imu_t) - cropTimeEpoch
-                # print(deltaImuPcd)
-                if deltaImuPcd >= 0:
-                    IMUCurrentIndex = IMUCurrentIndex + index
-                    IMUTimeInterp_current = float(imuDF.index[IMUCurrentIndex])
+    lat = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLLatInterp)
+    long = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLLongInterp)
+    height = np.interp((lidarCurrentEpoch+utcEpochDelta),KMLTimeInterp,KMLHeightInterp)
 
-                    IMUPrevIndex = IMUCurrentIndex - 1
-                    IMUTimeInterp_prev = float(imuDF.index[IMUPrevIndex])
-                    break
+    # Latlon to UTM
+    # =========================
+    latlonPos = LatLon(lat, long)
+    utmPos = toUtm8(latlonPos,None,None,None)
+    
+    # true north to grid north
+    # =========================
+    quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
+    quatGridNorth = quatConvergence @ quatInterpolatedTrueNorth 
 
-            # find kml data
-            # =========================
-            for kmlIndex, kml_t in enumerate(kmlDF.index[KMLCurrentIndex:]):
-                kmlTimestamp = (kml_t.tz_localize(utc)).to_pydatetime()
-                deltaKmlPcd = (float(datetime.timestamp(kmlTimestamp)) - (cropTimeEpoch + utcEpochDelta))
-                if deltaKmlPcd >= 0:
-                    
-                    KMLCurrentIndex = KMLCurrentIndex + kmlIndex
-                    KMLTimeInterp_now = float(datetime.timestamp(kmlTimestamp))
+    # add config boresight angle adjustment
+    # ======================================
+    # eulerAdjustmentRoll = mathutils.Euler((config["boresightAdjustment"]["Roll"] * degToRad,0,0))
+    # eulerAdjustmentPitch = mathutils.Euler((0,config["boresightAdjustment"]["Pitch"] * degToRad,0))
+    # eulerAdjustmentYaw = mathutils.Euler((0,0,config["boresightAdjustment"]["Yaw"] * degToRad))
+    eulerAdjustment = mathutils.Euler(( config["boresightAdjustment"]["Roll"]   * degToRad, \
+                                        config["boresightAdjustment"]["Pitch"]  * degToRad, \
+                                        config["boresightAdjustment"]["Yaw"]    * degToRad))
+                                      
+    # quatAdjustmentRoll = eulerAdjustmentRoll.to_quaternion()    
+    # quatAdjustmentPitch = eulerAdjustmentPitch.to_quaternion()    
+    # quatAdjustmentYaw = eulerAdjustmentYaw.to_quaternion()    
+    quatAdjustment = eulerAdjustment.to_quaternion()    
+    
+    # quatFinal = quatAdjustmentRoll @ quatAdjustmentPitch @ quatAdjustmentYaw @  quatGridNorth                                         
+    # quatFinal = quatAdjustment @  quatGridNorth                                         
+    quatFinal = quatGridNorth                                         
+    matRot = (quatFinal.to_matrix()).to_4x4()
+    
+    if utmOffsetX == 0 :
+        utmOffsetX = utmPos[2]
+        utmOffsetY = utmPos[3]
+        offsetFile = open(join(offsetPath, str( "UTM_offset.txt" )), "w+")
+        LINE = ["easting: " + str(utmOffsetX) + "\n", "northing: " + str(utmOffsetY)]
+        offsetFile.writelines(LINE)
+        offsetFile.close()
 
-                    KMLPrevIndex = KMLCurrentIndex - 1
-                    KMLTimeInterp_prev = float(datetime.timestamp( \
-                                                    (kmlDF.index[KMLPrevIndex].tz_localize(utc)).to_pydatetime()))
-                    break   
-            
-            # interpolate IMU data
-            # =========================
-            quatTrueNorthCurrent = mathutils.Quaternion(                \
-                (imuDF['quat_w'][imuDF.index[IMUCurrentIndex]],     \
-                imuDF['quat_x'][imuDF.index[IMUCurrentIndex]],      \
-                imuDF['quat_y'][imuDF.index[IMUCurrentIndex]],      \
-                imuDF['quat_z'][imuDF.index[IMUCurrentIndex]]) )
-        
-            quatTrueNorthPrev = mathutils.Quaternion(                \
-                (imuDF['quat_w'][imuDF.index[IMUPrevIndex]],     \
-                imuDF['quat_x'][imuDF.index[IMUPrevIndex]],      \
-                imuDF['quat_y'][imuDF.index[IMUPrevIndex]],      \
-                imuDF['quat_z'][imuDF.index[IMUPrevIndex]]) )
+    # calculate lever arm offset
+    leverArm = leverArmCalc()
+    leverArmOffsetPoint = leverArm.transform(matRot)
+    
+    leverArmOffsetX     = -(np.asarray(leverArmOffsetPoint.points)[0,0])
+    leverArmOffsetY     = -(np.asarray(leverArmOffsetPoint.points)[0,1])
+    leverArmOffsetZ     = -(np.asarray(leverArmOffsetPoint.points)[0,2])
+    
 
-            cropIMUFactor = 0.0
-            if (IMUTimeInterp_current - IMUTimeInterp_prev != 0) :
-                cropIMUFactor = (cropTimeEpoch - IMUTimeInterp_prev)/ \
-                                (IMUTimeInterp_current - IMUTimeInterp_prev)
-            
-            quatInterpolatedTrueNorth = quatTrueNorthPrev.slerp(quatTrueNorthCurrent, cropIMUFactor)
+    matLoc = mathutils.Matrix.Translation(( (utmPos[2] - utmOffsetX + leverArmOffsetX), \
+                                            (utmPos[3] - utmOffsetY + leverArmOffsetY), \
+                                            height + leverArmOffsetZ) )
+    matSca = mathutils.Matrix.Scale(utmPos[7],4)
+    
+    matTransform = matLoc @ matRot @ matSca
+    # Map data 
+    # ===========================
+    
+    pcdTransformed = pcdCurrent.transform(matTransform)
 
-            # interpolate lat,lon,height
-            # ===============================
-            KMLTimeInterp = [KMLTimeInterp_prev, KMLTimeInterp_now]
-            KMLLatInterp = [float(kmlDF['latitude'][KMLPrevIndex]), float(kmlDF['latitude'][KMLCurrentIndex])]
-            KMLLongInterp = [float(kmlDF['longitude'][KMLPrevIndex]), float(kmlDF['longitude'][KMLCurrentIndex])]
-            KMLHeightInterp = [float(kmlDF['height'][KMLPrevIndex]), float(kmlDF['height'][KMLCurrentIndex])]
 
-            lat = np.interp((cropTimeEpoch+utcEpochDelta),KMLTimeInterp,KMLLatInterp)
-            long = np.interp((cropTimeEpoch+utcEpochDelta),KMLTimeInterp,KMLLongInterp)
-            height = np.interp((cropTimeEpoch+utcEpochDelta),KMLTimeInterp,KMLHeightInterp)
-
-            # Latlon to UTM
-            # =========================
-            latlonPos = LatLon(lat, long)
-            utmPos = toUtm8(latlonPos,None,None,None)
-            
-            # true north to grid north
-            # =========================
-            quatConvergence = mathutils.Quaternion((0.0,0.0,1.0), math.radians(utmPos[6]))
-            quatGridNorth = quatConvergence @ quatInterpolatedTrueNorth 
-
-            # add config boresight angle adjustment
-            # ======================================
-            # eulerAdjustmentRoll = mathutils.Euler((config["boresightAdjustment"]["Roll"] * degToRad,0,0))
-            # eulerAdjustmentPitch = mathutils.Euler((0,config["boresightAdjustment"]["Pitch"] * degToRad,0))
-            # eulerAdjustmentYaw = mathutils.Euler((0,0,config["boresightAdjustment"]["Yaw"] * degToRad))
-            eulerAdjustment = mathutils.Euler(( config["boresightAdjustment"]["Roll"]   * degToRad, \
-                                                config["boresightAdjustment"]["Pitch"]  * degToRad, \
-                                                config["boresightAdjustment"]["Yaw"]    * degToRad))
-                                             
-            # quatAdjustmentRoll = eulerAdjustmentRoll.to_quaternion()    
-            # quatAdjustmentPitch = eulerAdjustmentPitch.to_quaternion()    
-            # quatAdjustmentYaw = eulerAdjustmentYaw.to_quaternion()    
-            quatAdjustment = eulerAdjustment.to_quaternion()    
-            
-            # quatFinal = quatAdjustmentRoll @ quatAdjustmentPitch @ quatAdjustmentYaw @  quatGridNorth                                         
-            # quatFinal = quatAdjustment @  quatGridNorth                                         
-            quatFinal = quatGridNorth                                         
-            matRot = (quatFinal.to_matrix()).to_4x4()
-            
-            if utmOffsetX == 0 :
-                utmOffsetX = utmPos[2]
-                utmOffsetY = utmPos[3]
-                offsetFile = open(join(offsetPath, str( "UTM_offset.txt" )), "w+")
-                LINE = ["easting: " + str(utmOffsetX) + "\n", "northing: " + str(utmOffsetY)]
-                offsetFile.writelines(LINE)
-                offsetFile.close()
-
-            # calculate lever arm offset
-            leverArm = leverArmCalc()
-            leverArmOffsetPoint = leverArm.transform(matRot)
-            
-            leverArmOffsetX     = -(np.asarray(leverArmOffsetPoint.points)[0,0])
-            leverArmOffsetY     = -(np.asarray(leverArmOffsetPoint.points)[0,1])
-            leverArmOffsetZ     = -(np.asarray(leverArmOffsetPoint.points)[0,2])
-            
-
-            matLoc = mathutils.Matrix.Translation(( (utmPos[2] - utmOffsetX + leverArmOffsetX), \
-                                                    (utmPos[3] - utmOffsetY + leverArmOffsetY), \
-                                                    height + leverArmOffsetZ) )
-            matSca = mathutils.Matrix.Scale(utmPos[7],4)
-            
-            matTransform = matLoc @ matRot @ matSca
-            # Map data 
-            # ===========================
-            pcdCropped = cropper.crop_point_cloud(pcdCurrent)
-            pcdCroppedTransformed = pcdCropped.transform(matTransform)
-            pcdTransformed = pcdTransformed + pcdCroppedTransformed
-        
-        motionCompeIter += 1
 
     # if cloudCounter <= 3 :
     #     pcdFinal = pcdFinal + pcdTransformed
     #     cloudCounter += 1
     # else :
-
-    lidarCurrentEpoch = lidarCurrentEpoch - 0.17
-
+    lidarCurrentEpoch = lidarCurrentEpoch - 0.1
     pcdFinal = pcdTransformed
     pcdWriteName = str(datetime.fromtimestamp(lidarCurrentEpoch+utcEpochDelta))
     pcdWriteName = pcdWriteName.replace(" ","__")
