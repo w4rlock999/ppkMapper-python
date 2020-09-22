@@ -201,7 +201,7 @@ def leverArmCalc():
 
 processStart = False
 
-for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:].iterrows(), total=len(pcdDf.index[3500:]), ascii=True):
+for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[1500:-100].iterrows(), total=len(pcdDf.index[1500:-100]), ascii=True):
     
     sys.stderr.flush()
 
@@ -389,6 +389,10 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:].iterrows(), tota
     pcdFinal = o3d.geometry.PointCloud()
     cloudCounter = 0
 
+
+print("process_finished", file = sys.stdout) 
+sys.stdout.flush()
+sys.exit(True)
     # else :
 
     # o3d.visualization.draw_geometries([pcdCurrent])

@@ -201,7 +201,7 @@ def leverArmCalc():
 
 processStart = False
 
-for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:].iterrows(), total=len(pcdDf.index[3500:]), ascii=True):
+for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:-100].iterrows(), total=len(pcdDf.index[3500:-100]), ascii=True):
     
     sys.stderr.flush()
 
