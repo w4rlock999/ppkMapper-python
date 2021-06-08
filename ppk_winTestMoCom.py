@@ -201,7 +201,7 @@ def leverArmCalc():
 
 processStart = False
 
-for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:-100].iterrows(), total=len(pcdDf.index[3500:-100]), ascii=True):
+for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[1000:-100].iterrows(), total=len(pcdDf.index[1000:-100]), ascii=True):
     
     sys.stderr.flush()
 
@@ -222,7 +222,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:-100].iterrows(), 
     pcdFile = join(pcdPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") )    
     pcdCurrent = o3d.io.read_point_cloud(pcdFile)
     
-    lidarCurrentEpoch = lidarCurrentEpoch + 0.1
+    lidarCurrentEpoch = lidarCurrentEpoch + 0.17
   
 
     # ====================================================
@@ -306,7 +306,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:-100].iterrows(), 
     # eulerAdjustmentYaw = mathutils.Euler((0,0,config["boresightAdjustment"]["Yaw"] * degToRad))
     eulerAdjustment = mathutils.Euler(( config["boresightAdjustment"]["Roll"]   * degToRad, \
                                         config["boresightAdjustment"]["Pitch"]  * degToRad, \
-                                        config["boresightAdjustment"]["Yaw"]    * degToRad))
+                                        5    * degToRad))
                                       
     # quatAdjustmentRoll = eulerAdjustmentRoll.to_quaternion()    
     # quatAdjustmentPitch = eulerAdjustmentPitch.to_quaternion()    
@@ -352,7 +352,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[3500:-100].iterrows(), 
     #     pcdFinal = pcdFinal + pcdTransformed
     #     cloudCounter += 1
     # else :
-    lidarCurrentEpoch = lidarCurrentEpoch - 0.1
+    lidarCurrentEpoch = lidarCurrentEpoch - 0.17 
     pcdFinal = pcdTransformed
     pcdWriteName = str(datetime.fromtimestamp(lidarCurrentEpoch+utcEpochDelta))
     pcdWriteName = pcdWriteName.replace(" ","__")

@@ -103,7 +103,7 @@ utcDatetime = datetime(int(timeData_raw['/utc_time/year'][timeData_raw.index[0]]
 
 # calculate delta epoch-utc to offset lidar data to UTC (USED BY KML) clock
 utcEpochDelta = datetime.timestamp(utcDatetime) - datetime.timestamp(epochDatetime)
-# print ('delta epoch: ' + str(utcEpochDelta))
+print ('delta epoch: ' + str(utcEpochDelta))
 
 # # Open IMU pickle file
 # # =============================
@@ -183,6 +183,7 @@ degToRad = 0.0174533
 cloudCounter = 0
 pcdFinal = o3d.geometry.PointCloud()
 
+
 def leverArmCalc():
     leverArmArray = np.array([[-0.056872,-0.0000018,0.265729]])
     eulerLeverArm = mathutils.Euler(( 90*degToRad, 44.99999*degToRad, 90*degToRad))
@@ -223,7 +224,8 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[1500:-100].iterrows(), 
     pcdFile = join(pcdPath, str(pcdDf['pcdTimestamp'][lidarIndex]+".pcd") )    
     pcdCurrent = o3d.io.read_point_cloud(pcdFile)
     
-    lidarCurrentEpoch = lidarCurrentEpoch + 0.17         # compensate lidar time as end time instead of start time
+    # lidarCurrentEpoch = lidarCurrentEpoch + 0.17         # compensate lidar time as end time instead of start time + 0.07sec latency
+    lidarCurrentEpoch = lidarCurrentEpoch + 0.17    # compensate lidar time as end time instead of start time + 0.07sec latency
     
     motionCompeIter = 0
     
@@ -328,7 +330,7 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[1500:-100].iterrows(), 
             # eulerAdjustmentYaw = mathutils.Euler((0,0,config["boresightAdjustment"]["Yaw"] * degToRad))
             eulerAdjustment = mathutils.Euler(( config["boresightAdjustment"]["Roll"]   * degToRad, \
                                                 config["boresightAdjustment"]["Pitch"]  * degToRad, \
-                                                config["boresightAdjustment"]["Yaw"]    * degToRad))
+                                                2    * degToRad))
                                              
             # quatAdjustmentRoll = eulerAdjustmentRoll.to_quaternion()    
             # quatAdjustmentPitch = eulerAdjustmentPitch.to_quaternion()    
@@ -376,7 +378,8 @@ for lidarIndex, lidarCurrentTimestamp in tqdm(pcdDf.iloc[1500:-100].iterrows(), 
     #     cloudCounter += 1
     # else :
 
-    lidarCurrentEpoch = lidarCurrentEpoch - 0.17
+    # lidarCurrentEpoch = lidarCurrentEpoch - 0.17
+    lidarCurrentEpoch = lidarCurrentEpoch - 0.17 
 
     pcdFinal = pcdTransformed
     pcdWriteName = str(datetime.fromtimestamp(lidarCurrentEpoch+utcEpochDelta))
